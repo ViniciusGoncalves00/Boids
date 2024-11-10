@@ -1,50 +1,93 @@
 using UnityEngine;
-using Random = UnityEngine.Random;
 
 public class Creature : MonoBehaviour
 {
-    public float initialSpeed;
-    public Vector3 velocity;
-    public float speedLimit = 4f;
-    public float boxSize = 10f;
+    public float DetectionDistance;
+    public int FieldOfView;
+    public int DeltaAngle;
 
-    void Start()
-    {
-        // Initialize with a random velocity
-        velocity = new Vector3(Random.Range(-initialSpeed, initialSpeed), Random.Range(-initialSpeed, initialSpeed), Random.Range(-initialSpeed, initialSpeed));
-    }
+    public float Speed;
+    public float RotationSpeed;
+    public float SphereCastRadius = 1;
 
     void Update()
     {
         MoveBoid();
     }
 
-    void MoveBoid()
+    private void FixedUpdate()
     {
-        // Update position based on velocity
-        transform.position += velocity * Time.deltaTime;
+        var position = transform.position;
 
-        // Check if the boid hits the boundaries of the box and reverse its direction if necessary
-        if (Mathf.Abs(transform.position.x) > boxSize)
+        var forward = transform.TransformDirection(Vector3.forward);
+        if (Physics.SphereCast(position, SphereCastRadius, forward, out var hit, DetectionDistance))
         {
-            velocity.x *= -1;
-            transform.position = new Vector3(Mathf.Sign(transform.position.x) * boxSize, transform.position.y, transform.position.z);
+            // Debug.DrawRay(position, forward * DetectionDistance, Color.red);
+            var bestDirection = BestDirection();
+            RotateBoid(bestDirection);
         }
-        if (Mathf.Abs(transform.position.y) > boxSize)
+        else
         {
-            velocity.y *= -1;
-            transform.position = new Vector3(transform.position.x, Mathf.Sign(transform.position.y) * boxSize, transform.position.z);
+            // Debug.DrawRay(position, forward * DetectionDistance, Color.white);
         }
-        if (Mathf.Abs(transform.position.z) > boxSize)
-        {
-            velocity.z *= -1;
-            transform.position = new Vector3(transform.position.x, transform.position.y, Mathf.Sign(transform.position.z) * boxSize);
-        }
+    }
 
-        // Limit the speed
-        if (velocity.magnitude > speedLimit)
+    private Vector3 BestDirection()
+{
+    var position = transform.position;
+    var bestDirection = Vector3.zero;
+    var maxDistance = 0f;
+
+    // Iterate through angles within the field of view
+    for (var i = 1; i <= FieldOfView / DeltaAngle; i++)
+    {
+        var forwardAngle = DeltaAngle * i * Mathf.Deg2Rad;
+        var z = Mathf.Cos(forwardAngle);
+
+        for (int j = 0; j <= 360 / DeltaAngle; j++)
         {
-            velocity = velocity.normalized * speedLimit;
+            var horizontalAngle = (DeltaAngle * j + 90) % 360 * Mathf.Deg2Rad;
+            var x = Mathf.Cos(horizontalAngle) * Mathf.Sin(forwardAngle);
+            var y = Mathf.Sin(horizontalAngle) * Mathf.Sin(forwardAngle);
+
+            var direction = new Vector3(x, y, z).normalized;
+            var worldDirection = transform.rotation * direction;
+            
+            if (Physics.SphereCast(position, SphereCastRadius, worldDirection, out var hit, DetectionDistance))
+            {
+                // Debug.DrawRay(position, worldDirection * hit.distance, Color.yellow);
+                
+                if (hit.distance > maxDistance)
+                {
+                    bestDirection = worldDirection;
+                    maxDistance = hit.distance;
+                }
+            }
+            else
+            {
+                // Debug.DrawRay(position, worldDirection * DetectionDistance, Color.green);
+
+                return worldDirection;
+            }
         }
+    }
+    
+    // Debug.DrawRay(position, bestDirection * DetectionDistance, Color.green);
+    return bestDirection;
+}
+
+private void RotateBoid(Vector3 direction)
+{
+    if (direction != Vector3.zero)
+    {
+        var targetRotation = Quaternion.LookRotation(direction);
+        transform.rotation = Quaternion.RotateTowards(transform.rotation, targetRotation, RotationSpeed * Time.deltaTime);
+    }
+}
+
+    private void MoveBoid()
+    {
+        var offset = transform.forward * (Speed * Time.deltaTime);
+        transform.position += offset;
     }
 }
